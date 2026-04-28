@@ -1,0 +1,13 @@
+{
+  "name": "texas-holdem-tracker",
+  "version": "1.0.0",
+  "description": "德州扑克计分器 - Texas Hold'em Poker Chip Tracker",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "socket.io": "^4.7.5"
+  }
+}
