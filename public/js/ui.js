@@ -73,30 +73,39 @@ const UI = {
         <div class="pot-amount">${pot}</div>
       </div>
 
-      <div class="players-circle">
+      <div class="players-list">
     `;
 
     room.players.forEach((p, i) => {
       const isActive = round && p.seatIndex === round.activePlayerIndex;
       const isDealer = p.isDealer;
-      const angle = (360 / room.players.length) * i - 90;
-      const radius = 38;
-      const x = 50 + radius * Math.cos(angle * Math.PI / 180);
-      const y = 50 + radius * Math.sin(angle * Math.PI / 180);
+
+      let badges = '';
+      if (isDealer) badges += '<span class="seat-badge dealer">D</span>';
+      if (round && round.sbIndex === p.seatIndex) badges += '<span class="seat-badge sb">SB</span>';
+      if (round && round.bbIndex === p.seatIndex) badges += '<span class="seat-badge bb">BB</span>';
+
+      let statusText = '';
+      if (p.status === 'folded') statusText = '<span class="player-status folded">弃牌</span>';
+      else if (p.status === 'allin') statusText = '<span class="player-status allin">ALL IN</span>';
+      else if (p.status === 'disconnected') statusText = '<span class="player-status disconnected">离线</span>';
+      else if (p.status === 'out') statusText = '<span class="player-status out">出局</span>';
+      else if (isActive) statusText = '<span class="player-status thinking">思考中...</span>';
 
       html += `
-        <div class="table-player ${p.status} ${isActive ? 'active-turn' : ''} ${p.id === myId ? 'is-me' : ''}"
-             style="left: ${x}%; top: ${y}%;">
-          <div class="table-player-inner">
-            ${isDealer ? '<div class="dealer-chip">D</div>' : ''}
-            ${round && round.sbIndex === p.seatIndex ? '<div class="blind-chip sb">SB</div>' : ''}
-            ${round && round.bbIndex === p.seatIndex ? '<div class="blind-chip bb">BB</div>' : ''}
-            <div class="table-avatar ${isActive ? 'pulse' : ''}">${p.name[0]}</div>
-            <div class="table-name">${p.name}</div>
-            <div class="table-chips">${p.chips}</div>
-            ${p.currentBet > 0 ? `<div class="table-bet">-${p.currentBet}</div>` : ''}
-            ${p.status === 'folded' ? '<div class="table-status">弃牌</div>' : ''}
-            ${p.status === 'allin' ? '<div class="table-status allin">ALL IN</div>' : ''}
+        <div class="table-player-row ${p.status} ${isActive ? 'active-turn' : ''} ${p.id === myId ? 'is-me' : ''}">
+          <div class="tp-avatar ${isActive ? 'pulse' : ''}">${p.name[0]}</div>
+          <div class="tp-info">
+            <div class="tp-name-row">
+              <span class="tp-name">${p.name}</span>
+              ${badges}
+              ${p.id === myId ? '<span class="seat-badge me">我</span>' : ''}
+            </div>
+            <div class="tp-chips-row">
+              <span class="tp-chips">${p.chips}</span>
+              ${p.currentBet > 0 ? `<span class="tp-bet">下注 ${p.currentBet}</span>` : ''}
+              ${statusText}
+            </div>
           </div>
         </div>
       `;
@@ -118,6 +127,11 @@ const UI = {
       </div>
       <div class="voice-transcript" id="voiceTranscript" style="display:none;"></div>
     `;
+
+    // Timer bar
+    if (round && round.phase !== 'showdown' && room.actionDeadline) {
+      html += `<div class="timer-bar" id="timerBar"><div class="timer-fill" id="timerFill"></div></div>`;
+    }
 
     // Action area
     if (round && round.phase === 'showdown') {
@@ -179,10 +193,23 @@ const UI = {
     }
     html += '</div>';
 
-    // Row 2: Raise — separate section with input
+    // Row 2: Raise — quick buttons + custom input
     if (options.options.includes('raise')) {
+      const currentPot = options.currentPot || 0;
+      const halfPot = Math.max(minRaise, Math.floor(currentPot / 2));
+      const fullPot = Math.max(minRaise, currentPot);
+      const x2 = minRaise * 2;
+      const x3 = minRaise * 3;
+
       html += `
         <div class="action-row action-row-raise">
+          <div class="raise-shortcuts">
+            <button class="btn btn-shortcut" onclick="document.getElementById('raiseAmount').value=${minRaise}">最小</button>
+            <button class="btn btn-shortcut" onclick="document.getElementById('raiseAmount').value=${x2}">2x</button>
+            <button class="btn btn-shortcut" onclick="document.getElementById('raiseAmount').value=${x3}">3x</button>
+            <button class="btn btn-shortcut" onclick="document.getElementById('raiseAmount').value=${halfPot}">½底池</button>
+            <button class="btn btn-shortcut" onclick="document.getElementById('raiseAmount').value=${fullPot}">底池</button>
+          </div>
           <div class="raise-control">
             <input type="number" id="raiseAmount" class="raise-input" value="${minRaise}" min="${minRaise}" step="${minRaise}" inputmode="numeric" placeholder="加注金额">
             <button class="btn btn-raise" onclick="app.doAction('raise', document.getElementById('raiseAmount').value)">
@@ -193,15 +220,15 @@ const UI = {
       `;
     }
 
-    // Row 3: Dangerous actions — fold and all-in, visually separated
+    // Row 3: Dangerous actions — fold and all-in, require confirmation
     html += '<div class="action-row action-row-danger">';
     if (options.options.includes('fold')) {
-      html += `<button class="btn btn-fold" onclick="app.doAction('fold')">
+      html += `<button class="btn btn-fold" onclick="app.confirmAction('fold', '确定弃牌？', '弃牌后本轮无法继续')">
         <span class="btn-icon">✕</span> 弃牌
       </button>`;
     }
     if (options.options.includes('allin')) {
-      html += `<button class="btn btn-allin" onclick="app.doAction('allin')">ALL IN</button>`;
+      html += `<button class="btn btn-allin" onclick="app.confirmAction('allin', 'ALL IN？', '将押上全部 ${me.chips} 筹码')">ALL IN</button>`;
     }
     html += '</div>';
 

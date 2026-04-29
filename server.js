@@ -37,6 +37,7 @@ function getRoomState(room, forPlayerId) {
     settings: room.settings,
     round: room.round,
     status: room.status, // 'waiting' | 'playing' | 'finished'
+    actionDeadline: room._actionTimerStart ? room._actionTimerStart + ACTION_TIMEOUT : null,
   };
 }
 
@@ -142,7 +143,62 @@ function advancePhase(room) {
       seatIndex: firstActive,
       options: getPlayerOptions(room, player),
     });
+    startActionTimer(room);
   }
+}
+
+const ACTION_TIMEOUT = 30000; // 30 seconds
+
+function clearActionTimer(room) {
+  if (room._actionTimer) {
+    clearTimeout(room._actionTimer);
+    room._actionTimer = null;
+  }
+}
+
+function startActionTimer(room) {
+  clearActionTimer(room);
+  const activeIdx = room.round.activePlayerIndex;
+  const player = room.players.find(p => p.seatIndex === activeIdx);
+  if (!player || player.status !== 'active') return;
+
+  room._actionTimerStart = Date.now();
+
+  room._actionTimer = setTimeout(() => {
+    // Auto check if possible, otherwise fold
+    const toCall = room.round.currentBet - player.currentBet;
+    if (toCall === 0) {
+      // Auto check
+      player.hasActed = true;
+      io.to(room.id).emit('player-acted', {
+        playerId: player.id, playerName: player.name,
+        action: 'check', amount: 0, room: getRoomState(room),
+      });
+    } else {
+      // Auto fold
+      player.status = 'folded';
+      player.hasActed = true;
+      io.to(room.id).emit('player-acted', {
+        playerId: player.id, playerName: player.name,
+        action: 'fold', amount: 0, room: getRoomState(room),
+      });
+    }
+
+    io.to(room.id).emit('action-timeout', { playerId: player.id, playerName: player.name });
+
+    if (!checkRoundEnd(room)) {
+      const nextSeat = nextActivePlayerIndex(room, player.seatIndex);
+      if (nextSeat >= 0) {
+        room.round.activePlayerIndex = nextSeat;
+        const nextPlayer = room.players.find(p => p.seatIndex === nextSeat);
+        io.to(room.id).emit('action-required', {
+          playerId: nextPlayer.id, seatIndex: nextSeat,
+          options: getPlayerOptions(room, nextPlayer), room: getRoomState(room),
+        });
+        startActionTimer(room);
+      }
+    }
+  }, ACTION_TIMEOUT);
 }
 
 function getPlayerOptions(room, player) {
@@ -157,7 +213,9 @@ function getPlayerOptions(room, player) {
   options.push('raise');
   options.push('allin');
 
-  return { options, toCall, minRaise: room.settings.bigBlind, currentBet: room.round.currentBet };
+  // Calculate current pot for quick-raise buttons
+  const currentPot = room.players.reduce((sum, p) => sum + (p.roundBet || 0), 0);
+  return { options, toCall, minRaise: room.settings.bigBlind, currentBet: room.round.currentBet, currentPot };
 }
 
 function checkRoundEnd(room) {
@@ -166,6 +224,7 @@ function checkRoundEnd(room) {
 
   // Only one player left (everyone else folded)
   if (active.length === 1) {
+    clearActionTimer(room);
     room.round.phase = 'showdown';
     room.round.pots = calculatePots(room);
     room.round.activePlayerIndex = -1;
@@ -286,6 +345,7 @@ function startNewRound(room) {
       seatIndex: firstToAct,
       options: getPlayerOptions(room, player),
     });
+    startActionTimer(room);
   }
 }
 
@@ -517,6 +577,7 @@ io.on('connection', (socket) => {
     });
 
     // Check if round/phase should advance
+    clearActionTimer(room);
     if (!checkRoundEnd(room)) {
       // Move to next player
       const nextSeat = nextActivePlayerIndex(room, player.seatIndex);
@@ -529,6 +590,7 @@ io.on('connection', (socket) => {
           options: getPlayerOptions(room, nextPlayer),
           room: getRoomState(room),
         });
+        startActionTimer(room);
       }
     }
   });
@@ -694,6 +756,7 @@ io.on('connection', (socket) => {
 
     // If it was the active player's turn during a round, auto-fold and advance
     if (room.round && room.round.activePlayerIndex === player.seatIndex) {
+      clearActionTimer(room);
       player.status = 'folded';
       player._statusBeforeDisconnect = 'folded';
       if (!checkRoundEnd(room)) {
@@ -707,6 +770,7 @@ io.on('connection', (socket) => {
             options: getPlayerOptions(room, nextPlayer),
             room: getRoomState(room),
           });
+          startActionTimer(room);
         }
       }
     }

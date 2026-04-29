@@ -117,6 +117,10 @@ const app = {
       voiceRecognition.stopListening();
     });
 
+    socketClient.on('action-timeout', ({ playerName }) => {
+      UI.showToast(`${playerName} 超时，自动操作`, 'warning');
+    });
+
     socketClient.on('app-error', ({ message }) => {
       UI.showToast(message, 'error');
     });
@@ -226,6 +230,31 @@ const app = {
     if (!this.room) return;
     const game = document.getElementById('page-game');
     game.innerHTML = UI.renderGameTable(this.room, socketClient.socket.id, this.actionOptions);
+    this.startTimerAnimation();
+  },
+
+  startTimerAnimation() {
+    if (this._timerRAF) cancelAnimationFrame(this._timerRAF);
+    const fill = document.getElementById('timerFill');
+    if (!fill || !this.room || !this.room.actionDeadline) return;
+
+    const deadline = this.room.actionDeadline;
+    const duration = 30000;
+    const startTime = deadline - duration;
+
+    const tick = () => {
+      const now = Date.now();
+      const elapsed = now - startTime;
+      const pct = Math.max(0, Math.min(100, (1 - elapsed / duration) * 100));
+      fill.style.width = pct + '%';
+
+      if (pct <= 33) fill.className = 'timer-fill timer-danger';
+      else if (pct <= 66) fill.className = 'timer-fill timer-warning';
+      else fill.className = 'timer-fill';
+
+      if (pct > 0) this._timerRAF = requestAnimationFrame(tick);
+    };
+    this._timerRAF = requestAnimationFrame(tick);
   },
 
   startRound() {
@@ -235,6 +264,12 @@ const app = {
   doAction(action, amount) {
     socketClient.playerAction(action, amount ? parseInt(amount) : undefined);
     this.actionOptions = null;
+  },
+
+  confirmAction(action, title, desc) {
+    UI.showModal(title, `<p>${desc}</p>`, () => {
+      this.doAction(action);
+    });
   },
 
   confirmWinners() {
