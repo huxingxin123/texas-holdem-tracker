@@ -175,10 +175,11 @@ function checkRoundEnd(room) {
     winner.chips += totalPot;
     room.round.winners = [{ id: winner.id, name: winner.name, amount: totalPot }];
 
-    // Reset for next round
+    // Reset for next round (preserve disconnected status)
     room.players.forEach(p => {
       p.roundBet = 0;
       p.currentBet = 0;
+      if (p.status === 'disconnected') return;
       if (p.chips > 0) p.status = 'waiting';
       else p.status = 'out';
     });
@@ -213,10 +214,11 @@ function startNewRound(room) {
   }
 
   const dealerIdx = room.round ? room.round.dealerIndex : 0;
-  const playersInRound = room.players.filter(p => p.chips > 0);
+  // Only online players with chips can play
+  const playersInRound = room.players.filter(p => p.chips > 0 && p.status !== 'disconnected');
 
   if (playersInRound.length < 2) {
-    io.to(room.id).emit('app-error', { message: '筹码不足的玩家太多，无法开始新一轮' });
+    io.to(room.id).emit('app-error', { message: '可参与的玩家不足，无法开始新一轮' });
     return;
   }
 
@@ -226,8 +228,14 @@ function startNewRound(room) {
     p.roundBet = 0;
     p.hasActed = false;
   });
-  room.players.filter(p => p.chips <= 0).forEach(p => {
+  room.players.filter(p => p.chips <= 0 && p.status !== 'disconnected').forEach(p => {
     p.status = 'out';
+  });
+  // Disconnected players stay disconnected, don't participate
+  room.players.filter(p => p.status === 'disconnected').forEach(p => {
+    p.currentBet = 0;
+    p.roundBet = 0;
+    p.hasActed = false;
   });
 
   const sbIndex = nextActivePlayerIndex(room, dealerIdx);
@@ -321,7 +329,46 @@ io.on('connection', (socket) => {
       socket.emit('app-error', { message: '房间不存在' });
       return;
     }
-    if (room.players.length >= 10) {
+
+    // Check if this is a reconnection (same name, disconnected)
+    const disconnected = room.players.find(p => p.name === name && p.status === 'disconnected');
+    if (disconnected) {
+      // Reconnect: restore player identity
+      const oldId = disconnected.id;
+      disconnected.id = socket.id;
+      disconnected.status = room.status === 'playing' ? 'active' : 'waiting';
+      // If they were folded this round, keep folded
+      if (room.round && disconnected._statusBeforeDisconnect) {
+        disconnected.status = disconnected._statusBeforeDisconnect;
+        delete disconnected._statusBeforeDisconnect;
+      }
+      currentRoom = roomId;
+      socket.join(roomId);
+
+      // Transfer host back if they were host
+      if (disconnected._wasHost) {
+        room.hostId = socket.id;
+        delete disconnected._wasHost;
+      }
+
+      const roomState = getRoomState(room);
+      socket.emit('join-success', { room: roomState, reconnected: true });
+      socket.to(roomId).emit('room-updated', { room: roomState });
+
+      // If it's their turn, send action-required
+      if (room.round && room.round.activePlayerIndex === disconnected.seatIndex && disconnected.status === 'active') {
+        socket.emit('action-required', {
+          playerId: socket.id,
+          seatIndex: disconnected.seatIndex,
+          options: getPlayerOptions(room, disconnected),
+          room: roomState,
+        });
+      }
+      return;
+    }
+
+    // Normal join
+    if (room.players.filter(p => p.status !== 'disconnected').length >= 10) {
       socket.emit('app-error', { message: '房间已满（最多10人）' });
       return;
     }
@@ -350,9 +397,7 @@ io.on('connection', (socket) => {
     currentRoom = roomId;
     socket.join(roomId);
     const roomState = getRoomState(room);
-    // Send join-success to the joiner specifically
     socket.emit('join-success', { room: roomState });
-    // Notify all others in the room
     socket.to(roomId).emit('room-updated', { room: roomState });
   });
 
@@ -531,11 +576,12 @@ io.on('connection', (socket) => {
       pots: pots.map(p => ({ ...p })),
     });
 
-    // Reset players
+    // Reset players (preserve disconnected status)
     room.players.forEach(p => {
       p.currentBet = 0;
       p.roundBet = 0;
       p.hasActed = false;
+      if (p.status === 'disconnected') return; // keep disconnected
       if (p.chips > 0) p.status = 'waiting';
       else p.status = 'out';
     });
@@ -619,37 +665,37 @@ io.on('connection', (socket) => {
     const room = rooms.get(currentRoom);
     if (!room) return;
 
-    const playerIdx = room.players.findIndex(p => p.id === socket.id);
-    if (playerIdx === -1) return;
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player) return;
 
-    const player = room.players[playerIdx];
-
-    if (room.status === 'waiting') {
-      room.players.splice(playerIdx, 1);
-      // Reassign seat indices
-      room.players.forEach((p, i) => p.seatIndex = i);
-    } else {
-      player.status = 'disconnected';
+    // Save current status for reconnection
+    if (player.status !== 'disconnected') {
+      player._statusBeforeDisconnect = player.status;
     }
 
     // Transfer host if needed
-    if (socket.id === room.hostId && room.players.length > 0) {
-      const activePlayers = room.players.filter(p => p.status !== 'disconnected');
-      if (activePlayers.length > 0) {
-        room.hostId = activePlayers[0].id;
+    if (socket.id === room.hostId) {
+      player._wasHost = true;
+      const onlinePlayers = room.players.filter(p => p.id !== socket.id && p.status !== 'disconnected');
+      if (onlinePlayers.length > 0) {
+        room.hostId = onlinePlayers[0].id;
       }
     }
 
-    if (room.players.filter(p => p.status !== 'disconnected').length === 0) {
+    player.status = 'disconnected';
+
+    // If ALL players are disconnected, clean up the room
+    if (room.players.every(p => p.status === 'disconnected')) {
       rooms.delete(currentRoom);
       return;
     }
 
     io.to(room.id).emit('room-updated', { room: getRoomState(room) });
 
-    // If it was the active player's turn, skip to next
+    // If it was the active player's turn during a round, auto-fold and advance
     if (room.round && room.round.activePlayerIndex === player.seatIndex) {
       player.status = 'folded';
+      player._statusBeforeDisconnect = 'folded';
       if (!checkRoundEnd(room)) {
         const nextSeat = nextActivePlayerIndex(room, player.seatIndex);
         if (nextSeat >= 0) {

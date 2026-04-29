@@ -425,8 +425,108 @@ async function runTests() {
     }
   }
 
-  // ===== Test 8: Final settlement =====
-  console.log('\n📋 测试8: 最终结算 - 盈亏总和为零');
+  // ===== Test 8: Disconnect during waiting - reconnect =====
+  console.log('\n📋 测试8: 等待阶段断线重连');
+  resetPlayerState(players);
+
+  // Record chips before disconnect
+  const p2ChipsBefore = players[1].lastRoom
+    ? players[1].lastRoom.players.find(p => p.name === '玩家2')?.chips
+    : null;
+
+  // Player 2 disconnects
+  const p2Name = players[1].name;
+  players[1].socket.disconnect();
+  await sleep(500);
+
+  // Check player 2 is marked as disconnected
+  const roomAfterDc = players[0].lastRoom;
+  const p2State = roomAfterDc.players.find(p => p.name === p2Name);
+  assert(p2State && p2State.status === 'disconnected', `${p2Name} 状态为 disconnected`);
+  assert(roomAfterDc.players.length === NUM_PLAYERS, `玩家数仍为 ${NUM_PLAYERS}（未被移除）`);
+
+  // Player 2 reconnects with new socket, same name
+  const p2New = await createPlayer(p2Name);
+  p2New.socket.emit('join-room', { roomId, name: p2Name });
+  const joinResult = await waitFor(p2New.socket, 'join-success');
+  assert(joinResult.reconnected === true, '收到 reconnected=true 标记');
+
+  const p2After = joinResult.room.players.find(p => p.name === p2Name);
+  assert(p2After && p2After.status !== 'disconnected', `${p2Name} 重连后状态恢复`);
+  if (p2ChipsBefore !== null) {
+    assert(p2After.chips === p2ChipsBefore, `筹码保留: ${p2After.chips} === ${p2ChipsBefore}`);
+  }
+
+  // Replace player reference
+  players[1] = p2New;
+  console.log(`  ${p2Name} 断线重连成功，筹码: ${p2After.chips}`);
+
+  // ===== Test 9: Disconnect during game - auto fold, then reconnect =====
+  console.log('\n📋 测试9: 游戏中断线 → 自动弃牌 → 重连保留筹码');
+  resetPlayerState(players);
+
+  // Start a round
+  const rs9Promises = players.map(p => waitFor(p.socket, 'round-started'));
+  host.socket.emit('start-round');
+  await Promise.all(rs9Promises);
+  await sleep(300);
+
+  // Find who is active and will disconnect
+  // Let's disconnect a player who is NOT currently active (so they get auto-folded when their turn comes)
+  const active9 = await waitForAction(players);
+  // We want to disconnect a DIFFERENT player, so the game can continue
+  const dcPlayer = players.find(p => p !== active9 && p !== host);
+  const dcName = dcPlayer.name;
+  const dcChipsBefore = dcPlayer.lastRoom
+    ? dcPlayer.lastRoom.players.find(p => p.name === dcName)?.chips
+    : null;
+
+  dcPlayer.socket.disconnect();
+  await sleep(300);
+
+  // The game should continue - remaining players act
+  for (let i = 0; i < NUM_PLAYERS * 4; i++) {
+    const ap = await waitForAction(players, 1500);
+    if (!ap) break;
+    ap.actionRequired = null;
+    ap.socket.emit('player-action', { action: 'fold' });
+    await sleep(150);
+    if (players.find(p => p.autoWon)) break;
+  }
+
+  const winner9 = await waitForAutoWon(players);
+  if (winner9) {
+    // Verify chips conserved (disconnected player's chips are still counted)
+    const t9Room = winner9.lastRoom;
+    const t9Total = getTotalChips(t9Room);
+    // Disconnected player's chips won't show in currentBet, but their chips should be intact
+    const dcInRoom = t9Room.players.find(p => p.name === dcName);
+    assert(dcInRoom !== undefined, `${dcName} 仍在房间中`);
+    assert(dcInRoom.status === 'disconnected' || dcInRoom.status === 'folded',
+      `${dcName} 状态为 disconnected/folded (实际: ${dcInRoom.status})`);
+    console.log(`  ${dcName} 断线后被自动弃牌，筹码: ${dcInRoom.chips}`);
+  }
+
+  // Reconnect the disconnected player
+  const dcNew = await createPlayer(dcName);
+  dcNew.socket.emit('join-room', { roomId, name: dcName });
+  const dcJoinResult = await waitFor(dcNew.socket, 'join-success');
+  assert(dcJoinResult.reconnected === true, `${dcName} 重连成功`);
+
+  const dcAfter = dcJoinResult.room.players.find(p => p.name === dcName);
+  assert(dcAfter.status !== 'disconnected', `${dcName} 重连后状态恢复`);
+
+  // Replace player reference
+  const dcIdx = players.indexOf(dcPlayer);
+  players[dcIdx] = dcNew;
+  console.log(`  ${dcName} 重连成功，筹码: ${dcAfter.chips}`);
+
+  // Verify total chips still conserved
+  const allChips = dcJoinResult.room.players.reduce((s, p) => s + p.chips, 0);
+  assert(allChips === expectedTotal, `重连后总筹码守恒 = ${expectedTotal} (实际: ${allChips})`);
+
+  // ===== Test 10: Final settlement =====
+  console.log('\n📋 测试10: 最终结算 - 盈亏总和为零');
   resetPlayerState(players);
 
   host.socket.emit('end-game');
