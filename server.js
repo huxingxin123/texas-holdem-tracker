@@ -60,14 +60,19 @@ function nextActivePlayerIndex(room, fromSeat) {
 }
 
 function calculatePots(room) {
-  // Simple pot calculation - handles side pots for all-in players
-  const activePlayers = room.players.filter(p => p.status !== 'folded' && p.status !== 'waiting');
-  if (activePlayers.length === 0) return [];
+  // Include ALL players who bet this round (including folded) for pot total
+  const allBettors = room.players.filter(p => (p.roundBet || 0) > 0);
+  if (allBettors.length === 0) return [];
 
-  const playerBets = activePlayers.map(p => ({
+  // Only non-folded players are eligible to WIN
+  const eligiblePlayers = room.players.filter(p =>
+    p.status !== 'folded' && p.status !== 'waiting' && p.status !== 'out' && p.status !== 'disconnected'
+  );
+
+  const playerBets = allBettors.map(p => ({
     id: p.id,
     totalBet: p.roundBet || 0,
-    status: p.status,
+    isEligible: eligiblePlayers.some(ep => ep.id === p.id),
   })).sort((a, b) => a.totalBet - b.totalBet);
 
   const pots = [];
@@ -78,12 +83,19 @@ function calculatePots(room) {
     if (level <= processed) continue;
 
     const contribution = level - processed;
-    const eligible = playerBets.filter(p => p.totalBet >= level).map(p => p.id);
     const contributors = playerBets.filter(p => p.totalBet > processed);
     const potAmount = contribution * contributors.length;
 
+    // Only eligible (non-folded) players who bet at least this level can win this pot
+    const potEligible = playerBets
+      .filter(p => p.isEligible && p.totalBet >= level)
+      .map(p => p.id);
+
     if (potAmount > 0) {
-      pots.push({ amount: potAmount, eligible });
+      pots.push({
+        amount: potAmount,
+        eligible: potEligible.length > 0 ? potEligible : eligiblePlayers.map(p => p.id),
+      });
     }
     processed = level;
   }

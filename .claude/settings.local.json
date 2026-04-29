@@ -13,7 +13,9 @@
       "Bash(gh repo:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "WebFetch(domain:texas-holdem-tracker.onrender.com)",
+      "Bash(node test.js)"
     ]
   }
 }
