@@ -15,7 +15,7 @@ const rooms = new Map();
 function generateRoomId() {
   let id;
   do {
-    id = Math.random().toString(36).substring(2, 8).toUpperCase();
+    id = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
   } while (rooms.has(id));
   return id;
 }

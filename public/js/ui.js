@@ -44,6 +44,17 @@ const UI = {
     const totalBets = room.players.reduce((sum, p) => sum + (p.currentBet || 0), 0);
     const pot = (round ? round.pot || 0 : 0) + totalBets;
 
+    // Determine how many cards are revealed based on phase
+    const revealedCount = !round ? 0 : { preflop: 0, flop: 3, turn: 4, river: 5, showdown: 5 }[round.phase] || 0;
+
+    let cardsHtml = '';
+    for (let i = 0; i < 5; i++) {
+      const isRevealed = i < revealedCount;
+      cardsHtml += `<div class="community-card ${isRevealed ? 'revealed' : 'facedown'}">
+        ${isRevealed ? '<div class="card-face">🂠</div>' : '<div class="card-back"></div>'}
+      </div>`;
+    }
+
     let html = `
       <div class="game-header">
         <div class="room-info">
@@ -51,6 +62,10 @@ const UI = {
           <span class="round-num">第 ${round ? round.roundNumber : 0} 轮</span>
         </div>
         <div class="phase-indicator ${round ? round.phase : ''}">${round ? phaseNames[round.phase] || '' : ''}</div>
+      </div>
+
+      <div class="community-cards">
+        ${cardsHtml}
       </div>
 
       <div class="pot-display">
@@ -150,26 +165,45 @@ const UI = {
 
     let html = '<div class="action-area">';
 
-    if (options.options.includes('fold')) {
-      html += `<button class="btn btn-fold" onclick="app.doAction('fold')">弃牌</button>`;
-    }
+    // Row 1: Primary actions (check/call) — the safe, common actions
+    html += '<div class="action-row action-row-primary">';
     if (options.options.includes('check')) {
-      html += `<button class="btn btn-check" onclick="app.doAction('check')">过牌</button>`;
+      html += `<button class="btn btn-check" onclick="app.doAction('check')">
+        <span class="btn-icon">✓</span> 过牌
+      </button>`;
     }
     if (options.options.includes('call') && toCall > 0) {
-      html += `<button class="btn btn-call" onclick="app.doAction('call')">跟注 ${toCall}</button>`;
+      html += `<button class="btn btn-call" onclick="app.doAction('call')">
+        <span class="btn-icon">→</span> 跟注 <span class="btn-amount">${toCall}</span>
+      </button>`;
     }
+    html += '</div>';
+
+    // Row 2: Raise — separate section with input
     if (options.options.includes('raise')) {
       html += `
-        <div class="raise-control">
-          <input type="number" id="raiseAmount" class="raise-input" value="${minRaise}" min="${minRaise}" step="${minRaise}" inputmode="numeric">
-          <button class="btn btn-raise" onclick="app.doAction('raise', document.getElementById('raiseAmount').value)">加注</button>
+        <div class="action-row action-row-raise">
+          <div class="raise-control">
+            <input type="number" id="raiseAmount" class="raise-input" value="${minRaise}" min="${minRaise}" step="${minRaise}" inputmode="numeric" placeholder="加注金额">
+            <button class="btn btn-raise" onclick="app.doAction('raise', document.getElementById('raiseAmount').value)">
+              <span class="btn-icon">↑</span> 加注
+            </button>
+          </div>
         </div>
       `;
+    }
+
+    // Row 3: Dangerous actions — fold and all-in, visually separated
+    html += '<div class="action-row action-row-danger">';
+    if (options.options.includes('fold')) {
+      html += `<button class="btn btn-fold" onclick="app.doAction('fold')">
+        <span class="btn-icon">✕</span> 弃牌
+      </button>`;
     }
     if (options.options.includes('allin')) {
       html += `<button class="btn btn-allin" onclick="app.doAction('allin')">ALL IN</button>`;
     }
+    html += '</div>';
 
     html += '</div>';
     return html;

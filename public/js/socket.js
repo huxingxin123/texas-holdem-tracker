@@ -22,7 +22,7 @@ class SocketClient {
   }
 
   joinRoom(roomId, name) {
-    this.emit('join-room', { roomId: roomId.toUpperCase(), name });
+    this.emit('join-room', { roomId: roomId.trim(), name });
   }
 
   startRound() {

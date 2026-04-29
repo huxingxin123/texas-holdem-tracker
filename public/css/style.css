@@ -141,16 +141,50 @@ html, body {
 .btn-danger { background: #8a2d2d; color: #fff; }
 
 /* Action buttons */
-.btn-fold { background: #6b3030; color: #ffb3b3; flex: 1; }
-.btn-check { background: #305a6b; color: #b3e0ff; flex: 1; }
-.btn-call { background: #2d6b2d; color: #b3ffb3; flex: 1; }
-.btn-raise { background: #6b5a2d; color: #ffe0b3; min-width: 80px; }
+.btn-fold {
+  background: #3a2525;
+  color: #cc8888;
+  flex: 1;
+  border: 1px solid #5a3535;
+  font-size: 14px;
+}
+.btn-check {
+  background: #1a4a6b;
+  color: #8ad4ff;
+  flex: 1;
+  font-size: 17px;
+  padding: 16px;
+}
+.btn-call {
+  background: #1a5a1a;
+  color: #88ee88;
+  flex: 1;
+  font-size: 17px;
+  padding: 16px;
+}
+.btn-raise {
+  background: #6b5a2d;
+  color: #ffe0b3;
+  min-width: 90px;
+  font-size: 15px;
+}
 .btn-allin {
   background: linear-gradient(135deg, #8a2d2d, #c94040);
   color: #fff;
   flex: 1;
   text-transform: uppercase;
   letter-spacing: 2px;
+  border: 1px solid #e05050;
+  font-size: 14px;
+}
+.btn-icon {
+  margin-right: 4px;
+  font-weight: 700;
+}
+.btn-amount {
+  font-weight: 800;
+  margin-left: 4px;
+  font-size: 1.1em;
 }
 
 /* ===== Lobby ===== */
@@ -285,6 +319,50 @@ html, body {
 .phase-indicator.turn { background: #3d3a1a; color: #ffd54f; }
 .phase-indicator.river { background: #3d1a1a; color: #ef5350; }
 .phase-indicator.showdown { background: #3d1a3d; color: #ce93d8; }
+
+/* Community Cards */
+.community-cards {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin: 14px 0 6px;
+}
+.community-card {
+  width: 46px;
+  height: 66px;
+  border-radius: 6px;
+  transition: transform 0.4s ease;
+  perspective: 400px;
+}
+.community-card.facedown .card-back {
+  width: 100%;
+  height: 100%;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #1a3daa, #2850cc);
+  border: 2px solid #4a6aee;
+  background-image:
+    repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(255,255,255,0.05) 4px, rgba(255,255,255,0.05) 8px);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+}
+.community-card.revealed {
+  animation: card-flip 0.5s ease;
+}
+.community-card.revealed .card-face {
+  width: 100%;
+  height: 100%;
+  border-radius: 6px;
+  background: #f0ead6;
+  border: 2px solid #d4c9a8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+@keyframes card-flip {
+  0% { transform: rotateY(180deg) scale(0.8); }
+  100% { transform: rotateY(0deg) scale(1); }
+}
 
 /* Pot */
 .pot-display {
@@ -475,15 +553,31 @@ html, body {
 /* Action Area */
 .action-area {
   display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 10px;
   padding: 12px 0;
+}
+.action-row {
+  display: flex;
+  gap: 10px;
+}
+.action-row-primary .btn {
+  border-radius: 12px;
+}
+.action-row-raise {
+  padding: 0;
+}
+.action-row-danger {
+  padding-top: 6px;
+  border-top: 1px solid #1e3a1e;
+}
+.action-row-danger .btn {
+  padding: 10px 16px;
 }
 .raise-control {
   display: flex;
   gap: 8px;
-  flex: 2;
-  min-width: 160px;
+  width: 100%;
 }
 .raise-input {
   flex: 1;
