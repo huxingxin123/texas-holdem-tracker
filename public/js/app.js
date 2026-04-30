@@ -22,6 +22,7 @@ const app = {
       this.myId = socketClient.socket.id;
       UI.showPage('page-lobby');
       this.renderLobby();
+      this.initAds();
       // Update URL for sharing
       history.replaceState(null, '', `?room=${room.id}`);
       UI.showToast('房间创建成功！');
@@ -41,6 +42,7 @@ const app = {
       this.myId = socketClient.socket.id;
       UI.showPage('page-lobby');
       this.renderLobby();
+      this.initAds();
       history.replaceState(null, '', `?room=${room.id}`);
       UI.showToast('加入房间成功！');
     });
@@ -113,6 +115,7 @@ const app = {
       UI.showPage('page-settlement');
       document.getElementById('page-settlement').innerHTML =
         UI.renderSettlement(balances, settlements, history);
+      this.initAds();
       // Stop voice recognition
       voiceRecognition.stopListening();
     });
@@ -223,6 +226,14 @@ const app = {
           </button>
         </div>
       ` : '<div class="lobby-waiting">等待房主开始游戏...</div>'}
+      <div class="ad-container">
+        <ins class="adsbygoogle"
+          style="display:block"
+          data-ad-client="ca-pub-XXXXXXXXXXXXXXXX"
+          data-ad-slot="LOBBY_AD_SLOT"
+          data-ad-format="auto"
+          data-full-width-responsive="true"></ins>
+      </div>
     `;
   },
 
@@ -321,6 +332,13 @@ const app = {
       input.remove();
       UI.showToast('链接已复制！');
     }
+  },
+
+  initAds() {
+    try {
+      const ads = document.querySelectorAll('.adsbygoogle:not([data-ad-status])');
+      ads.forEach(() => (window.adsbygoogle = window.adsbygoogle || []).push({}));
+    } catch (e) { /* AdSense not loaded */ }
   },
 
   backToHome() {

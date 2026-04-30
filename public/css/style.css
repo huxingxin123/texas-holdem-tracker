@@ -872,3 +872,11 @@ html, body {
   gap: 10px;
 }
 .modal-actions .btn { flex: 1; }
+
+/* ===== Ads ===== */
+.ad-container {
+  margin: 20px auto 0;
+  max-width: 400px;
+  min-height: 50px;
+  text-align: center;
+}

@@ -319,6 +319,14 @@ const UI = {
     }
 
     html += `
+        <div class="ad-container">
+          <ins class="adsbygoogle"
+            style="display:block"
+            data-ad-client="ca-pub-XXXXXXXXXXXXXXXX"
+            data-ad-slot="SETTLEMENT_AD_SLOT"
+            data-ad-format="auto"
+            data-full-width-responsive="true"></ins>
+        </div>
         <div class="settlement-actions">
           <button class="btn btn-primary" onclick="app.backToHome()">返回首页</button>
         </div>
